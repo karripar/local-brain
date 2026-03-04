@@ -1,18 +1,75 @@
 import mlvsClient from '../../client';
 import {DataType} from '@zilliz/milvus2-sdk-node';
 import {Request, Response, NextFunction} from 'express';
+import OpenAI from 'openai';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const aiClient = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 // Basic schema constants for our "vector store" collection
 const DEFAULT_COLLECTION_NAME = 'rag_documents';
-const VECTOR_DIM = 128; // must match your OpenAI embedding dimension TODO: Check this 
+// OpenAI text-embedding-3-small has 1536 dimensions
+const VECTOR_DIM = 1536;
 
 export const createCollection = async (
   collectionName: string = DEFAULT_COLLECTION_NAME,
 ) => {
-  // If collection already exists, do nothing
+  // If collection already exists, check that the schema matches what we expect.
   const collections = await mlvsClient.showCollections();
   const exists = collections.data.some((c: any) => c.name === collectionName);
-  if (exists) return;
+
+  if (exists) {
+    try {
+      const desc = await mlvsClient.describeCollection({
+        collection_name: collectionName,
+      } as any);
+
+      const fields = desc.schema?.fields ?? [];
+
+      // temporary debug
+      console.dir(fields, {depth: null});
+
+      // require our expected fields and types
+      const hasExpectedSchema =
+        fields.some(
+          (f: any) =>
+            f.name === 'id' &&
+            String(f.data_type) === String(DataType.Int64) &&
+            f.is_primary_key === true &&
+            f.autoID === false,
+        ) &&
+        fields.some(
+          (f: any) =>
+            f.name === 'text' &&
+            String(f.data_type) === String(DataType.VarChar),
+        ) &&
+        fields.some(
+          (f: any) =>
+            f.name === 'embedding' &&
+            String(f.data_type) === String(DataType.FloatVector) &&
+            Number(f.dim) === VECTOR_DIM,
+        );
+
+      const schemaMatches = hasExpectedSchema;
+
+      // If the existing collection has a different schema, drop and recreate it.
+      if (!schemaMatches) {
+        await mlvsClient.dropCollection({
+          collection_name: collectionName,
+        } as any);
+      } else {
+        // Schema is fine, just ensure it's loaded.
+        await mlvsClient.loadCollectionSync({collection_name: collectionName});
+        return;
+      }
+    } catch (e) {
+      // If describeCollection fails for some reason, fall through to recreate.
+    }
+  }
 
   const collectionParams = {
     collection_name: collectionName,
@@ -22,7 +79,7 @@ export const createCollection = async (
         description: 'Primary key',
         data_type: DataType.Int64,
         is_primary_key: true,
-        autoID: true,
+        autoID: false,
       },
       {
         name: 'text',
@@ -34,9 +91,7 @@ export const createCollection = async (
         name: 'embedding',
         description: 'Vector embedding',
         data_type: DataType.FloatVector,
-        type_params: {
-          dim: String(VECTOR_DIM),
-        },
+        dim: VECTOR_DIM,
       },
     ],
   };
@@ -46,11 +101,10 @@ export const createCollection = async (
   await mlvsClient.createIndex({
     collection_name: collectionName,
     field_name: 'embedding',
-    extra_params: {
-      index_type: 'IVF_FLAT',
-      metric_type: 'IP',
-      params: JSON.stringify({nlist: 1024}),
-    },
+    index_name: 'idx_embedding',
+    index_type: 'IVF_FLAT',
+    metric_type: 'IP',
+    params: {nlist: 1024},
   } as any);
 
   await mlvsClient.loadCollectionSync({collection_name: collectionName});
@@ -69,7 +123,15 @@ export const insertEmbeddings = async (
 
   await createCollection(collectionName);
 
-  const entities = [
+  const numRows = texts.length;
+  const ids = Array.from({length: numRows}, (_, i) => i + 1);
+
+  const data = [
+    {
+      name: 'id',
+      type: DataType.Int64,
+      values: ids,
+    },
     {
       name: 'text',
       type: DataType.VarChar,
@@ -82,10 +144,36 @@ export const insertEmbeddings = async (
     },
   ];
 
-  await mlvsClient.insert({
-    collection_name: collectionName,
-    fields_data: entities as any,
-  });
+  try {
+    await mlvsClient.insert({
+      collection_name: collectionName,
+      data,
+      num_rows: numRows,
+    } as any);
+  } catch (e: any) {
+    // eslint-disable-next-line no-console
+    console.error('Milvus insert error object:', e);
+    // Helpful logging for debugging schema mismatches
+    try {
+      const desc = await mlvsClient.describeCollection({
+        collection_name: collectionName,
+      } as any);
+      // eslint-disable-next-line no-console
+      console.error('Milvus insert failed. Collection schema:', desc);
+      // eslint-disable-next-line no-console
+      console.error('Milvus insert failed. First row values sample:', {
+        text: texts[0],
+        embeddingLength: embeddings[0]?.length,
+      });
+    } catch (inner) {
+      // eslint-disable-next-line no-console
+      console.error(
+        'Milvus insert failed and describeCollection also failed',
+        inner,
+      );
+    }
+    throw e;
+  }
 };
 
 // Similarity search: return topK most similar chunks for a query embedding
@@ -104,7 +192,7 @@ export const similaritySearch = async (
     topk: topK.toString(),
     vectors: [queryEmbedding],
     metric_type: 'IP',
-    params: JSON.stringify({nprobe: 16}),
+    params: {nprobe: 16},
     output_fields: ['text'],
   } as any;
 
@@ -118,9 +206,41 @@ export const similaritySearch = async (
   }));
 };
 
-// Simple init helper you can call from your server bootstrap
+// Simple init helper
 export const initMilvusVectorStore = async () => {
   await createCollection(DEFAULT_COLLECTION_NAME);
+};
+
+export const seedMilvus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const {texts} = req.body;
+
+    const docs =
+      Array.isArray(texts) && texts.length
+        ? texts
+        : [
+            'Milvus is a vector database for AI applications.',
+            'OpenAI provides powerful foundation models.',
+            'Vector search is useful for semantic similarity.',
+          ];
+
+    const embedResponse = await aiClient.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: docs,
+    });
+
+    const embeddings = embedResponse.data.map((d) => d.embedding);
+
+    await insertEmbeddings(docs, embeddings);
+
+    res.json({inserted: docs.length});
+  } catch (err) {
+    next(err);
+  }
 };
 
 export const queryMilvus = async (
@@ -135,9 +255,20 @@ export const queryMilvus = async (
     }
 
     // TODO: call OpenAI embeddings + Milvus similarity search here.
-    // For now, just echo back.
-    res.json({message: 'Query endpoint is working', query});
+    const queryEmbeddingResponse = await aiClient.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: query,
+    });
+    const queryEmbedding = queryEmbeddingResponse.data[0]?.embedding ?? [];
+
+    const searchResults = await similaritySearch(queryEmbedding);
+
+    res.json({results: searchResults});
   } catch (err) {
     next(err);
   }
+};
+
+export const dropCollections = async () => {
+  await mlvsClient.dropCollection({collection_name: 'rag_documents'} as any);
 };

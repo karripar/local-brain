@@ -1,7 +1,7 @@
 import express from 'express';
 import {body} from 'express-validator';
 import {validationErrors} from '../../middlewares';
-import {queryMilvus} from '../controllers/MilvusControllers';
+import {queryMilvus, seedMilvus, dropCollections} from '../controllers/MilvusControllers';
 
 const router = express.Router();
 
@@ -11,5 +11,16 @@ router.post(
   validationErrors,
   queryMilvus,
 );
+
+router.post('/seed', seedMilvus);
+
+router.delete('/collections', async (req, res, next) => {
+  try {
+    await dropCollections();
+    res.json({ok: true, message: 'Collections dropped'});
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default router;
