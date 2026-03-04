@@ -4,7 +4,7 @@ import {Request, Response, NextFunction} from 'express';
 
 // Basic schema constants for our "vector store" collection
 const DEFAULT_COLLECTION_NAME = 'rag_documents';
-const VECTOR_DIM = 128; // must match your OpenAI embedding dimension
+const VECTOR_DIM = 128; // must match your OpenAI embedding dimension TODO: Check this 
 
 export const createCollection = async (
   collectionName: string = DEFAULT_COLLECTION_NAME,

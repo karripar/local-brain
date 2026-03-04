@@ -1,16 +1,4 @@
-import express from 'express';
-import bodyParser from 'body-parser';
-import apiRouter from './api';
-import {notFound, errorHandler} from './middlewares';
-
-const app = express();
-
-app.use(bodyParser.json());
-
-app.use('/api', apiRouter);
-
-app.use(notFound);
-app.use(errorHandler);
+import app from './app';
 
 const PORT = process.env.PORT || 3006;
 
