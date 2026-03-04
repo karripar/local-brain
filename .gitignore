@@ -6,5 +6,6 @@ dist
 .vscode
 coverage
 !.env.sample
+volumes
 
 

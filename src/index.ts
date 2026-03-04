@@ -12,7 +12,7 @@ app.use('/api', apiRouter);
 app.use(notFound);
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3006;
 
 app.listen(PORT, () => {
   console.log(`Milvus vector-store API listening on port ${PORT}`);
