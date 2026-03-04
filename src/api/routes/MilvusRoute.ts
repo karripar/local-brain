@@ -1,7 +1,7 @@
 import express from 'express';
 import {body} from 'express-validator';
 import {validationErrors} from '../../middlewares';
-import {queryMilvus, seedMilvus, dropCollections} from '../controllers/MilvusControllers';
+import {queryMilvus, seedMilvus, dropCollections, debugListDocuments} from '../controllers/MilvusControllers';
 
 const router = express.Router();
 
@@ -13,6 +13,15 @@ router.post(
 );
 
 router.post('/seed', seedMilvus);
+
+router.get('/debug/list-documents', async (req, res, next) => {
+  try {
+    const docs = await debugListDocuments();
+    res.json({documents: docs});
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.delete('/collections', async (req, res, next) => {
   try {
