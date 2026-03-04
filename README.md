@@ -8,3 +8,18 @@ to start the milvus server
 (make sure docker desktop is installed)
 
 
+for devs:
+1. npm i
+2. add env variables to .env
+3. docker compose up -d
+4. npm run dev
+
+
+endpoints:
+1. DELETE /api/v1/milvus/collections
+ - delete collections
+2. POST /api/v1/milvus/seed
+ - Seed the vector store
+3. GET /api/v1/milvus/debug/list-documents
+ - lists documents available
+
