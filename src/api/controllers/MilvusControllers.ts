@@ -1,6 +1,6 @@
 import mlvsClient from '../../client';
-import {DataType} from '@zilliz/milvus2-sdk-node';
-import {Request, Response, NextFunction} from 'express';
+import { DataType } from '@zilliz/milvus2-sdk-node';
+import { Request, Response, NextFunction } from 'express';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 
@@ -10,9 +10,16 @@ const aiClient = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Basic schema constants for our "vector store" collection
 const DEFAULT_COLLECTION_NAME = 'rag_documents';
-const VECTOR_DIM = 1536; // text-embedding-3-small
+// OpenAI text-embedding-3-small has 1536 dimensions
+const VECTOR_DIM = 1536;
 
+/**
+ * Creates the collection + index if missing.
+ * IMPORTANT: If collection exists, we DO NOT drop/recreate it automatically
+ * (that is a common cause of "insert works but later no records").
+ */
 export const createCollection = async (
   collectionName: string = DEFAULT_COLLECTION_NAME,
 ) => {
@@ -20,55 +27,30 @@ export const createCollection = async (
   const exists = collections.data.some((c: any) => c.name === collectionName);
 
   if (exists) {
+    // Load and return. We can log schema for debugging, but never auto-drop here.
     try {
       const desc = await mlvsClient.describeCollection({
         collection_name: collectionName,
       } as any);
+
       const fields = desc.schema?.fields ?? [];
-
-      // Debug actual fields to ensure schema alignment with inserts
-      console.dir(fields, {depth: null});
-
-      const hasExpectedSchema =
-        fields.some(
-          (f: any) =>
-            f.name === 'id' &&
-            String(f.data_type) === String(DataType.Int64) &&
-            f.is_primary_key === true &&
-            f.autoID === false,
-        ) &&
-        fields.some(
-          (f: any) =>
-            f.name === 'text' &&
-            String(f.data_type) === String(DataType.VarChar),
-        ) &&
-        fields.some(
-          (f: any) =>
-            f.name === 'embedding' &&
-            String(f.data_type) === String(DataType.FloatVector) &&
-            Number(f.dim) === VECTOR_DIM,
-        );
-
-      if (hasExpectedSchema) {
-        await mlvsClient.loadCollectionSync({collection_name: collectionName});
-        return;
-      }
-
-      await mlvsClient.dropCollection({
-        collection_name: collectionName,
-      } as any);
-    } catch {
-      // if describeCollection fails, fall through to (re)create
+      console.dir({ milvusSchemaFields: fields }, { depth: null });
+    } catch (e) {
+      console.warn('describeCollection failed (non-fatal):', (e as any)?.message ?? e);
     }
+
+    await mlvsClient.loadCollectionSync({ collection_name: collectionName });
+    return;
   }
 
+  // Prefer autoID to avoid primary-key collisions across multiple seeds/inserts
   const schema = [
     {
       name: 'id',
       description: 'Primary key',
       data_type: DataType.Int64,
       is_primary_key: true,
-      autoID: false,
+      autoID: true,
     },
     {
       name: 'text',
@@ -95,11 +77,11 @@ export const createCollection = async (
     field_name: 'embedding',
     index_name: 'idx_embedding',
     index_type: 'IVF_FLAT',
-    params: {nlist: 1024},
+    params: { nlist: 1024 },
     metric_type: 'IP',
   } as any);
 
-  await mlvsClient.loadCollectionSync({collection_name: collectionName});
+  await mlvsClient.loadCollectionSync({ collection_name: collectionName });
 };
 
 export const insertEmbeddings = async (
@@ -114,25 +96,27 @@ export const insertEmbeddings = async (
 
   await createCollection(collectionName);
 
-  const numRows = texts.length;
-
-  // Row-wise objects, like the official docs
-  const fields_data: Array<{id: number; text: string; embedding: number[]}> =
-    [];
-
-  for (let i = 0; i < numRows; i++) {
-    fields_data.push({
-      id: i + 1,
-      text: texts[i],
+  // With autoID: true, DO NOT provide id
+  const fields_data: Array<{ text: string; embedding: number[] }> = texts.map(
+    (t, i) => ({
+      text: t,
       embedding: embeddings[i],
-    });
-  }
+    }),
+  );
 
   try {
     const insertRes = await mlvsClient.insert({
       collection_name: collectionName,
       fields_data,
     } as any);
+
+    // Flush so that repeated query/search sees the data immediately/reliably
+    await (mlvsClient as any).flushSync?.({
+      collection_names: [collectionName],
+    });
+
+    // Ensure it's loaded after flush (safe no-op if already loaded)
+    await mlvsClient.loadCollectionSync({ collection_name: collectionName });
 
     console.log('Milvus insert response:', insertRes);
   } catch (e: any) {
@@ -143,6 +127,7 @@ export const insertEmbeddings = async (
       const desc = await mlvsClient.describeCollection({
         collection_name: collectionName,
       } as any);
+
       console.error(
         'Collection schema from Milvus:',
         JSON.stringify(desc.schema, null, 2),
@@ -164,19 +149,18 @@ export const similaritySearch = async (
   await createCollection(collectionName);
 
   // Collection should already be loaded in createCollection, but keep for safety
-  await mlvsClient.loadCollectionSync({collection_name: collectionName});
+  await mlvsClient.loadCollectionSync({ collection_name: collectionName });
 
   const res = await mlvsClient.search({
     collection_name: collectionName,
     vector: [queryEmbedding],
-    params: {nprobe: 16},
+    params: { nprobe: 16 },
     limit: topK,
     metric_type: 'IP',
     output_fields: ['id', 'text'],
   } as any);
 
-  // Debug the raw search response shape once
-  console.dir({milvusSearchRaw: res}, {depth: null});
+  console.dir({ milvusSearchRaw: res }, { depth: null });
 
   const rawResults = (res as any).results ?? (res as any).data ?? [];
 
@@ -191,13 +175,15 @@ export const debugListDocuments = async (
   collectionName: string = DEFAULT_COLLECTION_NAME,
 ) => {
   await createCollection(collectionName);
+
   const queryRes = await (mlvsClient as any).query({
     collection_name: collectionName,
-    expr: 'id >= 1',
+    expr: 'id >= 0',
     output_fields: ['id', 'text'],
     limit: 10,
   });
-  console.dir({milvusQuerySample: queryRes}, {depth: null});
+
+  console.dir({ milvusQuerySample: queryRes }, { depth: null });
   return queryRes;
 };
 
@@ -211,7 +197,7 @@ export const seedMilvus = async (
   next: NextFunction,
 ) => {
   try {
-    const {texts} = req.body;
+    const { texts } = req.body;
 
     const docs =
       Array.isArray(texts) && texts.length
@@ -231,7 +217,7 @@ export const seedMilvus = async (
 
     await insertEmbeddings(docs, embeddings);
 
-    res.json({inserted: docs.length});
+    res.json({ inserted: docs.length });
   } catch (err) {
     next(err);
   }
@@ -243,21 +229,22 @@ export const queryMilvus = async (
   next: NextFunction,
 ) => {
   try {
-    const {query} = req.body;
+    const { query } = req.body;
     if (!query || typeof query !== 'string') {
-      return res.status(400).json({message: 'query (string) is required'});
+      return res.status(400).json({ message: 'query (string) is required' });
     }
 
     const queryEmbeddingResponse = await aiClient.embeddings.create({
       model: 'text-embedding-3-small',
       input: query,
     });
+
     const queryEmbedding =
       (queryEmbeddingResponse.data[0]?.embedding as number[]) ?? [];
 
     const searchResults = await similaritySearch(queryEmbedding);
 
-    res.json({results: searchResults});
+    res.json({ results: searchResults });
   } catch (err) {
     next(err);
   }
