@@ -16,10 +16,11 @@ for devs:
 
 
 endpoints:
-1. DELETE /api/v1/milvus/collections
- - delete collections
-2. POST /api/v1/milvus/seed
+1. DELETE /api/v1/vector/documents
+ - delete documents
+2. POST /api/v1/vector/ingest
  - Seed the vector store
-3. GET /api/v1/milvus/debug/list-documents
- - lists documents available
+3. POST /api/v1/vector/search
+ - search vector store (query matching)
 
+Check the routes for correct endpoints

@@ -1,8 +1,8 @@
 import exporess, { Request, Response } from "express";
-import milvusRoute from "./routes/MilvusRoute";
+import vectorRoute from "./routes/vectorRoute";
 
 const router = exporess.Router();
 
-router.use('/milvus', milvusRoute);
+router.use('/vector', vectorRoute);
 
 export default router;
