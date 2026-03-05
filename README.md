@@ -26,7 +26,7 @@ npm install
 npm run dev
 ```
 
-Default base URL (if not changed): `http://localhost:3000/api/v1/vector`.
+Default base URL (if not changed): `http://localhost:3006/api/v1/vector`.
 
 ## Routes
 
