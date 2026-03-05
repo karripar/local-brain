@@ -1,26 +1,113 @@
-this is only testing for now, trying to learn this mf (milvus)
+# Milvus Store
 
-Basic express REST client with Milvus implementation
+Minimal Express API for storing and searching text embeddings in Milvus.
 
+## How it works
 
-RUN: sudo docker-compose up -d
-to start the milvus server
-(make sure docker desktop is installed)
+1. You send text (documents) to the API.
+2. The service creates embeddings for the text.
+3. Embeddings + metadata are stored in a Milvus collection (`rag_documents`).
+4. You can search by semantic similarity, delete docs, or drop the collection.
 
+## Prerequisites
 
-for devs:
-1. npm i
-2. add env variables to .env
-3. docker compose up -d
-4. npm run dev
+- Docker Desktop running
+- Node.js (LTS)
+- `.env` file with your embedding provider config (see `src/services/embeddingService.ts`).
 
+## Run
 
-endpoints:
-1. DELETE /api/v1/vector/documents
- - delete documents
-2. POST /api/v1/vector/ingest
- - Seed the vector store
-3. POST /api/v1/vector/search
- - search vector store (query matching)
+```bash
+# start Milvus + dependencies
+docker compose up -d
 
-Check the routes for correct endpoints
+# install deps and start API
+npm install
+npm run dev
+```
+
+Default base URL (if not changed): `http://localhost:3000/api/v1/vector`.
+
+## Routes
+
+All routes are under `/api/v1/vector`.
+
+### POST /ingest
+
+Ingest or upsert documents.
+
+Body:
+
+```json
+{
+  "items": [
+    {
+      "doc_id": "doc-1",
+      "text": "Some content to index",
+      "source": "optional-metadata"
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{"upserted": 1}
+```
+
+### POST /search
+
+Semantic search over stored documents.
+
+Body:
+
+```json
+{
+  "query": "search phrase",
+  "topK": 5
+}
+```
+
+Response (example shape):
+
+```json
+{
+  "results": [
+    {
+      "doc_id": "doc-1",
+      "text": "Some content to index",
+      "source": "optional-metadata",
+      "score": 0.87
+    }
+  ]
+}
+```
+
+### DELETE /documents
+
+Delete documents by `doc_id`.
+
+Body:
+
+```json
+{
+  "doc_ids": ["doc-1", "doc-2"]
+}
+```
+
+Response:
+
+```json
+{"deleted": 2}
+```
+
+### DELETE /drop
+
+Dev-only: drop the whole `rag_documents` collection.
+
+Response:
+
+```json
+{"dropped": true}
+```
