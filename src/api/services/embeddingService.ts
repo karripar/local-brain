@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const aiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+export const aiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export const embedTexts = async (texts: string[]) => {
   if (!texts.length) return [];
