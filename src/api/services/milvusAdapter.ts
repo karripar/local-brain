@@ -1,15 +1,9 @@
 import mlvsClient from '../../client';
 import {DataType} from '@zilliz/milvus2-sdk-node';
+import { MilvusDoc } from '../../types/MilvusTypes';
 
 const DEFAULT_COLLECTION_NAME = 'rag_documents';
 const VECTOR_DIM = 1536;
-
-export type MilvusDoc = {
-  doc_id: string; // primary key
-  text: string;
-  embedding: number[];
-  source?: string; // optional metadata (keep simple)
-};
 
 export const ensureCollection = async (
   collectionName: string = DEFAULT_COLLECTION_NAME,

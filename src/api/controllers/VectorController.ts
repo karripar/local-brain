@@ -1,14 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { embedQuery, embedTexts } from '../services/embeddingService';
-import { upsertDocs, vectorSearch, deleteByDocIds, MilvusDoc, ensureCollection } from '../services/milvusAdapter';
+import { upsertDocs, vectorSearch, deleteByDocIds, ensureCollection } from '../services/milvusAdapter';
 import mlvsClient from '../../client';
 import { aiClient } from '../services/embeddingService';
+import { IngestItem, SearchResult, MilvusDoc } from '../../types/MilvusTypes';
 
-type IngestItem = {
-  doc_id: string;   // required for upsert
-  text: string;     // required
-  source?: string;  // optional
-};
 
 export const ingest = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -101,13 +97,6 @@ export const readStore = async (
 };
 
 
-type SearchResult = {
-  doc_id: string;
-  text: string;
-  source?: string;
-  score?: number;
-};
-
 // This function builds a context string from the search results to be used in the RAG answer generation step.
 export const buildContext = (results: SearchResult[], maxChunks = 5) => {
   if (!results.length) {
@@ -158,6 +147,8 @@ export const askWithRag = async (
   next: NextFunction,
 ) => {
   try {
+
+    // topK means how many relevant documents to retrieve from the vector store to build the context for answering the question. Right now defaulted to 5.
     const { query, topK = 5 } = req.body;
 
     if (!query || typeof query !== 'string') {

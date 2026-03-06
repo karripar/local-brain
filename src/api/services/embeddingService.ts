@@ -15,7 +15,7 @@ export const embedTexts = async (texts: string[]) => {
   return resp.data.map((d) => d.embedding as number[]);
 }
 
-export async function embedQuery(q: string) {
+export const embedQuery = async (q: string) => {
   const resp = await aiClient.embeddings.create({
     model: 'text-embedding-3-small',
     input: q,
