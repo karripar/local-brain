@@ -79,7 +79,7 @@ const checkSignedSource = (
     return res.status(403).json({ message: 'Invalid timestamp' });
   }
 
-  const maxAgeMs = 5 * 60 * 1000;
+  const maxAgeMs = 5 * 60 * 1000; // 5 minutes of clock skew allowed
   if (Math.abs(Date.now() - timestampMs) > maxAgeMs) {
     return res.status(403).json({ message: 'Stale request' });
   }

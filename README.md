@@ -30,7 +30,7 @@ Default base URL (if not changed): `http://localhost:3006/api/v1/vector`.
 
 ## Security
 
-All routes are protected with a shared secret and HMAC protected headers. Paste this into Postman's pre-request scripts and set the environment variables and create an environment in Postman:
+All routes are protected with a shared secret and HMAC protected headers. Paste this script block into Postman's pre-request scripts and set the environment variables and create an environment in Postman:
 ```javascript
 const secret = pm.environment.get("SOURCE_SECRET");
 if (!secret) {
