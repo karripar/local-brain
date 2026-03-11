@@ -1,0 +1,10 @@
+{
+  "entryPoints": ["src/api/controllers/**/*.ts"],
+  "entryPointStrategy": "expand",
+  "out": "docs",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "excludeExternals": true,
+  "plugin": [],
+  "tsconfig": "tsconfig.json"
+}
