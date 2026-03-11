@@ -28,6 +28,34 @@ npm run dev
 
 Default base URL (if not changed): `http://localhost:3006/api/v1/vector`.
 
+## Security
+
+All routes are protected with a shared secret and HMAC protected headers. Paste this into Postman's pre-request scripts and set the environment variables and create an environment in Postman:
+```javascript
+const secret = pm.environment.get("SOURCE_SECRET");
+if (!secret) {
+  throw new Error("Missing SOURCE_SECRET in environment");
+}
+
+const timestamp = Date.now().toString();
+const method = pm.request.method.toUpperCase();
+const pathWithQuery = pm.request.url.getPathWithQuery();
+
+let body = "";
+if (pm.request.body && pm.request.body.mode === "raw") {
+  body = pm.request.body.raw || "";
+}
+
+const payload = [method, pathWithQuery, timestamp, body].join("\n");
+const signature = CryptoJS.HmacSHA256(payload, secret).toString(CryptoJS.enc.Hex);
+
+pm.request.headers.upsert({ key: "x-timestamp", value: timestamp });
+pm.request.headers.upsert({ key: "x-signature", value: signature });
+
+console.log("payload:", payload);
+console.log("signature:", signature);
+```
+
 ## Routes
 
 All routes are under `/api/v1/vector`.

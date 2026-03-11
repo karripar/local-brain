@@ -3,7 +3,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
-import {errorHandler, notFound} from './middlewares';
+import {errorHandler, notFound, checkSignedSource} from './middlewares';
 import api from './api';
 import mlvsClient from './client';
 
@@ -11,10 +11,19 @@ dotenv.config();
 
 const app = express();
 
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString('utf8');
+    },
+  })
+);
 app.use(morgan('dev'));
 app.use(helmet({contentSecurityPolicy: false}));
 app.use(cors());
+
+app.use(errorHandler);
+app.use(checkSignedSource);
 
 app.use('/api/v1', api);
 
@@ -28,8 +37,6 @@ app.get("/milvus/health", async (req, res) => {
   }
 });
 
-
 app.use(notFound);
-app.use(errorHandler);
 
 export default app;

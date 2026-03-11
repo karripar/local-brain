@@ -1,9 +1,9 @@
 import mlvsClient from '../../client';
 import {DataType} from '@zilliz/milvus2-sdk-node';
-import { MilvusDoc } from '../../types/MilvusTypes';
+import { MilvusDoc, SearchResult } from '../../types/MilvusTypes';
 
-const DEFAULT_COLLECTION_NAME = 'rag_documents';
-const VECTOR_DIM = 1536;
+const DEFAULT_COLLECTION_NAME = process.env.COLLECTION_NAME || 'rag_documents';
+const VECTOR_DIM = Number(process.env.VECTOR_DIMENSIONS) || 1536;
 
 export const ensureCollection = async (
   collectionName: string = DEFAULT_COLLECTION_NAME,
@@ -72,7 +72,7 @@ export const ensureCollection = async (
   }
 };
 
-function escapeExprString(s: string) {
+const escapeExprString = (s: string) => {
   // Milvus expr string literal uses double quotes commonly; escape safely
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
@@ -81,6 +81,7 @@ export const deleteByDocIds = async (
   docIds: string[],
   collectionName: string = DEFAULT_COLLECTION_NAME,
 ) => {
+  try {
   if (!docIds.length) return;
   await ensureCollection(collectionName);
 
@@ -89,12 +90,16 @@ export const deleteByDocIds = async (
 
   await (mlvsClient as any).delete({
     collection_name: collectionName,
-    // SDK variants: some look for `filter`, some for `expr`
+    // SDK variants: some look for `filter`, some for `expr`. Current SDK was crying about missing `expr`, but docs mention `filter`... so we set both just in case.
     filter: expr,
     expr: expr,
   });
 
   await (mlvsClient as any).flushSync?.({ collection_names: [collectionName] });
+  } catch (e) {
+    console.error('Error in deleteByDocIds:', e);
+    throw e;
+  }
 };
 
 export const upsertDocs = async (
@@ -128,6 +133,7 @@ export const upsertDocs = async (
     }
 
     // --- "Upsert" reliably: delete existing ids, then insert ---
+    // built in upsert function is not reliable, it was tested and found to cause duplicates and ghost vectors. Deleting by doc_id is more reliable.
     const ids = docs.map((d) => d.doc_id);
     await deleteByDocIds(ids, collectionName);
 
@@ -160,11 +166,11 @@ export const vectorSearch = async (
     output_fields: ['doc_id', 'text', 'source'],
   } as any);
 
-  const raw = (res as any).results ?? (res as any).data ?? [];
-  return raw.map((r: any) => ({
+  const raw = res.results ?? [];
+  return raw.map((r) => ({
     doc_id: r.doc_id ?? r.fields?.doc_id,
     text: r.text ?? r.fields?.text,
     source: r.source ?? r.fields?.source,
     score: r.score ?? r.distance,
-  }));
+  })) as SearchResult[];
 };
