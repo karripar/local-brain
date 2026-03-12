@@ -155,10 +155,9 @@ export const readStore = async (
   next: NextFunction,
 ) => {
   try {
-    await ensureCollection();
 
     const result = await mlvsClient.query({
-      collection_name: 'rag_documents',
+      collection_name: process.env.COLLECTION_NAME || 'rag_documents',
       filter: 'doc_id != ""',
       output_fields: ['doc_id', 'text', 'source'],
       limit: 1000,

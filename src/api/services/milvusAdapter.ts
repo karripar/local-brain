@@ -83,7 +83,6 @@ export const deleteByDocIds = async (
 ) => {
   try {
   if (!docIds.length) return;
-  await ensureCollection(collectionName);
 
   const list = docIds.map((id) => `"${escapeExprString(id)}"`).join(',');
   const expr = `doc_id in [${list}]`;
@@ -108,8 +107,6 @@ export const upsertDocs = async (
 ) => {
   try {
     if (!docs.length) return;
-
-    await ensureCollection(collectionName);
 
     // --- Validate schema to avoid silent mismatch (old collection, wrong fields, etc.) ---
     const desc = await mlvsClient.describeCollection({
@@ -156,7 +153,6 @@ export const vectorSearch = async (
   topK: number = 5,
   collectionName: string = DEFAULT_COLLECTION_NAME,
 ) => {
-  await ensureCollection(collectionName);
 
   const res = await mlvsClient.search({
     collection_name: collectionName,
