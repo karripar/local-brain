@@ -60,7 +60,7 @@ export const ensureCollection = async (
       field_name: 'embedding',
       index_name: 'idx_embedding',
       index_type: 'IVF_FLAT',
-      params: {nlist: 1024},
+      params: {nlist: 1024}, // nlist is a parameter that controls the index accuracy/speed tradeoff. Higher nlist means more accurate but slower search.
       metric_type: 'IP',
     } as any);
   }
@@ -150,6 +150,7 @@ export const upsertDocs = async (
   }
 };
 
+// perform a vector search with the given query embedding and return topK results with their doc_id, text, source, and score. Score is the similarity score (higher is more similar).
 export const vectorSearch = async (
   queryEmbedding: number[],
   topK: number = 5,
@@ -160,7 +161,7 @@ export const vectorSearch = async (
   const res = await mlvsClient.search({
     collection_name: collectionName,
     vector: [queryEmbedding],
-    params: {nprobe: 16},
+    params: {nprobe: 16}, // nprobe is a parameter that controls the search accuracy/speed tradeoff. Higher nprobe means more accurate but slower search. 16 is a common default.
     limit: topK,
     metric_type: 'IP',
     output_fields: ['doc_id', 'text', 'source'],

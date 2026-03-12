@@ -1,6 +1,4 @@
 import OpenAI from 'openai';
-import dotenv from 'dotenv';
-dotenv.config();
 
 export const aiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const embeddingModel = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
