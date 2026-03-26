@@ -41,7 +41,7 @@ deploy-client:
     - |
       docker run -d \
         --restart unless-stopped \
-        --network go-exchange \
+        --network milvus \
         -p 3006:3006 \
         --name milvus-client \
         -e PORT=3006 \
