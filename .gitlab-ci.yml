@@ -44,7 +44,11 @@ deploy-milvus:
     - docker run -d --restart unless-stopped --network go-exchange -p 19530:19530 -p 19121:19121 --name milvus-standalone milvusdb/milvus:v2.2.8
 
     # Run Milvus client
-    - docker run -d --restart unless-stopped --network go-exchange -p 3006:3006 \
+    - |
+      docker run -d \
+        --restart unless-stopped \
+        --network go-exchange \
+        -p 3006:3006 \
         -e PORT=3006 \
         -e OPENAI_API_KEY=$OPENAI_API_KEY \
         -e MILVUS_ADDRESS=milvus-standalone:19530 \
