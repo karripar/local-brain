@@ -31,22 +31,47 @@ deploy-milvus:
     - go-exchange-runner
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker pull $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
 
-    - docker stop milvus-client || true
-    - docker rm milvus-client || true
-
+    # Write Docker Compose file dynamically
     - |
-      docker run -d \
-        --restart unless-stopped \
-        --network go-exchange \
-        -p 3006:3006 \
-        --name milvus-client \
-        -e PORT=3006 \
-        -e OPENAI_API_KEY=$OPENAI_API_KEY \
-        -e MILVUS_ADDRESS=milvus-standalone:19530 \
-        -e EMBEDDING_MODEL=text-embedding-3-small \
-        -e VECTOR_DIMENSIONS=1536 \
-        -e COLLECTION_NAME=rag_documents \
-        -e SOURCE_SECRET=$SOURCE_SECRET \
-        $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
+      cat > docker-compose.yml <<EOF
+      version: "3.9"
+
+      services:
+        milvus-standalone:
+          image: milvusdb/milvus:v2.2.8
+          container_name: milvus-standalone
+          ports:
+            - "19530:19530"
+            - "19121:19121"
+          networks:
+            - go-exchange
+
+        milvus-client:
+          image: $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
+          container_name: milvus-client
+          environment:
+            PORT: 3006
+            OPENAI_API_KEY: ${OPENAI_API_KEY}
+            MILVUS_ADDRESS: milvus-standalone:19530
+            EMBEDDING_MODEL: text-embedding-3-small
+            VECTOR_DIMENSIONS: 1536
+            COLLECTION_NAME: rag_documents
+            SOURCE_SECRET: ${SOURCE_SECRET}
+          ports:
+            - "3006:3006"
+          depends_on:
+            - milvus-standalone
+          networks:
+            - go-exchange
+
+      networks:
+        go-exchange:
+          driver: bridge
+      EOF
+
+    # Stop any existing stack
+    - docker-compose -f docker-compose.yml down || true
+
+    # Deploy the stack
+    - docker-compose -f docker-compose.yml up -d
