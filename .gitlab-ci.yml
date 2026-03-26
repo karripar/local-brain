@@ -32,7 +32,7 @@ deploy-milvus:
     - docker-compose -f docker-compose.yml down || true
 
     # Replace the standalone image with the one built in CI
-    - sed -i "s|image: milvusdb/milvus:v2.2.8|image: $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA|g" docker-compose.yml
+    - sed -i "s|image: milvusdb/milvus:v2.2.8|image: ${CI_REGISTRY_IMAGE}/milvus:${CI_COMMIT_SHORT_SHA}|g" docker-compose.yml
 
     # Start Milvus stack
     - docker-compose -f docker-compose.yml up -d
