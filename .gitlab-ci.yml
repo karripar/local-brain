@@ -58,4 +58,4 @@ deploy-milvus:
         -e SOURCE_SECRET=$SOURCE_SECRET \
         --name milvus-client \
         $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA \
-        sh -c "./wait-for-milvus.sh milvus-standalone 19530 npm start"
+        sh -c 'until nc -z milvus-standalone 19530; do echo "Waiting for Milvus..."; sleep 3; done; echo "Milvus ready!"; npm start'
