@@ -32,63 +32,35 @@ deploy-milvus:
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 
-    # Write wait-for-milvus script
-    - |
-      cat > wait-for-milvus.sh <<'EOF'
-      #!/bin/sh
-      host="$1"
-      port="$2"
-      echo "Waiting for Milvus at $host:$port..."
-      until nc -z "$host" "$port"; do
-        sleep 3
-        echo "Still waiting for Milvus..."
-      done
-      echo "Milvus is ready!"
-      exec "$3"
-      EOF
-    - chmod +x wait-for-milvus.sh
+    # Stop and remove any old containers first
+    - docker stop milvus-client milvus-standalone || true
+    - docker rm milvus-client milvus-standalone || true
 
-    # Write Docker Compose file
-    - |
-      cat > docker-compose.yml <<EOF
-      version: "3.9"
+    # Remove old network if exists
+    - docker network rm go-exchange || true
 
-      services:
-        milvus-standalone:
-          image: milvusdb/milvus:v2.2.8
-          container_name: milvus-standalone
-          ports:
-            - "19530:19530"
-            - "19121:19121"
-          networks:
-            - go-exchange
+    # Create network explicitly
+    - docker network create go-exchange || true
 
-        milvus-client:
-          image: $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
-          container_name: milvus-client
-          environment:
-            PORT: 3006
-            OPENAI_API_KEY: ${OPENAI_API_KEY}
-            MILVUS_ADDRESS: milvus-standalone:19530
-            EMBEDDING_MODEL: text-embedding-3-small
-            VECTOR_DIMENSIONS: 1536
-            COLLECTION_NAME: rag_documents
-            SOURCE_SECRET: ${SOURCE_SECRET}
-          ports:
-            - "3006:3006"
-          command: ["./wait-for-milvus.sh", "milvus-standalone", "19530", "npm", "start"]
-          depends_on:
-            - milvus-standalone
-          networks:
-            - go-exchange
+    # Deploy Milvus server
+    - docker run -d \
+        --name milvus-standalone \
+        --network go-exchange \
+        -p 19530:19530 \
+        -p 19121:19121 \
+        milvusdb/milvus:v2.2.8
 
-      networks:
-        go-exchange:
-          driver: bridge
-      EOF
-
-    # Stop any existing stack
-    - docker-compose -f docker-compose.yml down || true
-
-    # Deploy the stack
-    - docker-compose -f docker-compose.yml up -d
+    # Deploy Milvus client
+    - docker run -d \
+        --name milvus-client \
+        --network go-exchange \
+        -p 3006:3006 \
+        -e PORT=3006 \
+        -e OPENAI_API_KEY=$OPENAI_API_KEY \
+        -e MILVUS_ADDRESS=milvus-standalone:19530 \
+        -e EMBEDDING_MODEL=text-embedding-3-small \
+        -e VECTOR_DIMENSIONS=1536 \
+        -e COLLECTION_NAME=rag_documents \
+        -e SOURCE_SECRET=$SOURCE_SECRET \
+        $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA \
+        sh -c "./wait-for-milvus.sh milvus-standalone 19530 npm start"
