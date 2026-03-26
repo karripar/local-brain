@@ -19,23 +19,19 @@ build-milvus:
   script:
     - docker build --build-arg CI_JOB_TOKEN=$CI_JOB_TOKEN -t $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA .
     - docker push $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
-
+    
 deploy-milvus:
   stage: deploy
   tags:
     - go-exchange-runner
   script:
-    # Pull latest image
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker pull $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
 
-    # Stop/remove old containers
-    - docker-compose -f docker-compose.yml down || true
+    # Replace the Milvus image in docker-compose.yml
+    - >
+      sed -i "s|image: milvusdb/milvus:v2.2.8|image: ${CI_REGISTRY_IMAGE}/milvus:${CI_COMMIT_SHORT_SHA}|g"
+      docker-compose.yml
 
-    # Replace the standalone image with the one built in CI
-    - sed -i "s|image: milvusdb/milvus:v2.2.8|image: ${CI_REGISTRY_IMAGE}/milvus:${CI_COMMIT_SHORT_SHA}|g" docker-compose.yml
-
-    # Start Milvus stack
+    # Deploy with docker-compose
     - docker-compose -f docker-compose.yml up -d
-
-    # Wait for Milvus to be healthy
-    - docker-compose -f docker-compose.yml logs -f standalone
