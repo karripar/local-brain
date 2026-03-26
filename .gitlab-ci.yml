@@ -10,7 +10,6 @@ variables:
   DOCKER_BUILDKIT: '1'
 
 before_script:
-  # Login to GitLab registry
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 
 build-milvus:
@@ -18,11 +17,7 @@ build-milvus:
   tags:
     - docker
   script:
-    - |
-      docker build \
-        --build-arg CI_JOB_TOKEN=$CI_JOB_TOKEN \
-        -t $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA \
-        .
+    - docker build --build-arg CI_JOB_TOKEN=$CI_JOB_TOKEN -t $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA .
     - docker push $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
 
 deploy-milvus:
@@ -33,26 +28,16 @@ deploy-milvus:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker pull $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
 
-    # Stop/remove old containers
     - docker stop milvus-client milvus-standalone || true
     - docker rm milvus-client milvus-standalone || true
-
-    # Create network if not exists
     - docker network ls | grep go-exchange || docker network create go-exchange
 
-    # Run Milvus server
-    - docker run -d --restart unless-stopped \
-        --network go-exchange \
-        -p 19530:19530 \
-        -p 19121:19121 \
-        --name milvus-standalone \
-        milvusdb/milvus:v2.2.8
+    - docker run -d --restart unless-stopped --network go-exchange -p 19530:19530 -p 19121:19121 --name milvus-standalone milvusdb/milvus:v2.2.8
 
-    # Get Milvus server IP
     - export MILVUS_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' milvus-standalone)
 
-    # Run Milvus client pointing directly to the server IP
-    - docker run -d \
+    - |
+      docker run -d \
         --restart unless-stopped \
         --network go-exchange \
         -p 3006:3006 \
@@ -65,4 +50,4 @@ deploy-milvus:
         -e SOURCE_SECRET=$SOURCE_SECRET \
         --name milvus-client \
         $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA \
-        npm start
+        sh -c 'until nc -z $MILVUS_IP 19530; do sleep 2; done; npm start'
