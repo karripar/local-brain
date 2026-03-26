@@ -53,8 +53,7 @@ deploy-milvus:
     - export MILVUS_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' milvus-standalone)
 
     # Run Milvus client pointing directly to the server IP
-    - |
-     docker run -d \
+    - docker run -d \
         --restart unless-stopped \
         --network go-exchange \
         -p 3006:3006 \
