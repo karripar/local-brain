@@ -31,29 +31,27 @@ deploy-milvus:
     - go-exchange-runner
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
 
-    # Stop and remove any old containers first
+    # Stop/remove old containers
     - docker stop milvus-client milvus-standalone || true
     - docker rm milvus-client milvus-standalone || true
 
-    # Remove old network if exists
-    - docker network rm go-exchange || true
+    # Create network if not exists
+    - docker network ls | grep go-exchange || docker network create go-exchange
 
-    # Create network explicitly
-    - docker network create go-exchange || true
-
-    # Deploy Milvus server
-    - |
-      docker run -d \
-        --name milvus-standalone \
+    # Run Milvus server
+    - docker run -d \
+        --restart unless-stopped \
         --network go-exchange \
         -p 19530:19530 \
         -p 19121:19121 \
+        --name milvus-standalone \
         milvusdb/milvus:v2.2.8
 
-    - |
-      docker run -d \
-        --name milvus-client \
+    # Run Milvus client
+    - docker run -d \
+        --restart unless-stopped \
         --network go-exchange \
         -p 3006:3006 \
         -e PORT=3006 \
@@ -63,5 +61,6 @@ deploy-milvus:
         -e VECTOR_DIMENSIONS=1536 \
         -e COLLECTION_NAME=rag_documents \
         -e SOURCE_SECRET=$SOURCE_SECRET \
+        --name milvus-client \
         $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA \
         sh -c "./wait-for-milvus.sh milvus-standalone 19530 npm start"
