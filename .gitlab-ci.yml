@@ -41,8 +41,7 @@ deploy-milvus:
     - docker network ls | grep go-exchange || docker network create go-exchange
 
     # Run Milvus server
-    - docker run -d \
-        --restart unless-stopped \
+    - docker run -d --restart unless-stopped \
         --network go-exchange \
         -p 19530:19530 \
         -p 19121:19121 \
