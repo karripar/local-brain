@@ -10,7 +10,7 @@ variables:
   DOCKER_BUILDKIT: "1"
 
 before_script:
-  # Login to GitLab registry
+  # Login to GitLab registry d
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 
 build-milvus:
