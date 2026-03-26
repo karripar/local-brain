@@ -10,7 +10,7 @@ variables:
   DOCKER_BUILDKIT: "1"
 
 before_script:
-  # Login to GitLab registry d
+  # Login to GitLab registry
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 
 build-milvus:
@@ -32,7 +32,23 @@ deploy-milvus:
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 
-    # Write Docker Compose file dynamically
+    # Write wait-for-milvus script
+    - |
+      cat > wait-for-milvus.sh <<'EOF'
+      #!/bin/sh
+      host="$1"
+      port="$2"
+      echo "Waiting for Milvus at $host:$port..."
+      until nc -z "$host" "$port"; do
+        sleep 3
+        echo "Still waiting for Milvus..."
+      done
+      echo "Milvus is ready!"
+      exec "$3"
+      EOF
+    - chmod +x wait-for-milvus.sh
+
+    # Write Docker Compose file
     - |
       cat > docker-compose.yml <<EOF
       version: "3.9"
@@ -60,6 +76,7 @@ deploy-milvus:
             SOURCE_SECRET: ${SOURCE_SECRET}
           ports:
             - "3006:3006"
+          command: ["./wait-for-milvus.sh", "milvus-standalone", "19530", "npm", "start"]
           depends_on:
             - milvus-standalone
           networks:
