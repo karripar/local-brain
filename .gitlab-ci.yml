@@ -25,29 +25,17 @@ deploy-milvus:
   tags:
     - go-exchange-runner
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    # Pull latest image
     - docker pull $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA
 
-    - docker stop milvus-client milvus-standalone || true
-    - docker rm milvus-client milvus-standalone || true
-    - docker network ls | grep go-exchange || docker network create go-exchange
+    # Stop/remove old containers
+    - docker-compose -f docker-compose.yml down || true
 
-    - docker run -d --restart unless-stopped --network go-exchange -p 19530:19530 -p 19121:19121 --name milvus-standalone milvusdb/milvus:v2.2.8
+    # Replace the standalone image with the one built in CI
+    - sed -i "s|image: milvusdb/milvus:v2.2.8|image: $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA|g" docker-compose.yml
 
-    - export MILVUS_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' milvus-standalone)
+    # Start Milvus stack
+    - docker-compose -f docker-compose.yml up -d
 
-    - |
-      docker run -d \
-        --restart unless-stopped \
-        --network go-exchange \
-        -p 3006:3006 \
-        -e PORT=3006 \
-        -e OPENAI_API_KEY=$OPENAI_API_KEY \
-        -e MILVUS_ADDRESS=$MILVUS_IP:19530 \
-        -e EMBEDDING_MODEL=text-embedding-3-small \
-        -e VECTOR_DIMENSIONS=1536 \
-        -e COLLECTION_NAME=rag_documents \
-        -e SOURCE_SECRET=$SOURCE_SECRET \
-        --name milvus-client \
-        $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA \
-        sh -c 'until nc -z $MILVUS_IP 19530; do sleep 2; done; npm start'
+    # Wait for Milvus to be healthy
+    - docker-compose -f docker-compose.yml logs -f standalone
