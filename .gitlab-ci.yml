@@ -43,19 +43,25 @@ deploy-milvus:
     - docker network create go-exchange || true
 
     # Deploy Milvus server
-    - docker run -d --name milvus-standalone --network go-exchange -p 19530:19530 -p 19121:19121 milvusdb/milvus:v2.2.8
+    - docker run -d \
+        --name milvus-standalone \
+        --network go-exchange \
+        -p 19530:19530 \
+        -p 19121:19121 \
+        milvusdb/milvus:v2.2.8
 
     # Deploy Milvus client
-    - docker run -d \
-      --name milvus-client \
-      --network go-exchange \
-      -p 3006:3006 \
-      -e PORT=3006 \
-      -e OPENAI_API_KEY=$OPENAI_API_KEY \
-      -e MILVUS_ADDRESS=milvus-standalone:19530 \
-      -e EMBEDDING_MODEL=text-embedding-3-small \
-      -e VECTOR_DIMENSIONS=1536 \
-      -e COLLECTION_NAME=rag_documents \
-      -e SOURCE_SECRET=$SOURCE_SECRET \
-      $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA \
-      sh -c "./wait-for-milvus.sh milvus-standalone 19530 npm start"
+    - |
+      docker run -d \
+        --name milvus-client \
+        --network go-exchange \
+        -p 3006:3006 \
+        -e PORT=3006 \
+        -e OPENAI_API_KEY=$OPENAI_API_KEY \
+        -e MILVUS_ADDRESS=milvus-standalone:19530 \
+        -e EMBEDDING_MODEL=text-embedding-3-small \
+        -e VECTOR_DIMENSIONS=1536 \
+        -e COLLECTION_NAME=rag_documents \
+        -e SOURCE_SECRET=$SOURCE_SECRET \
+        $CI_REGISTRY_IMAGE/milvus:$CI_COMMIT_SHORT_SHA \
+        sh -c "./wait-for-milvus.sh milvus-standalone 19530 npm start"
