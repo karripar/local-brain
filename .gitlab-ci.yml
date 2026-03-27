@@ -8,6 +8,8 @@ variables:
   DOCKER_HOST: unix:///var/run/docker.sock
   DOCKER_TLS_CERTDIR: ""
   DOCKER_BUILDKIT: "1"
+  MILVUS_DOCKER_NETWORK: "milvus"
+  MILVUS_ADDRESS: "milvus-standalone:19530"
 
 before_script:
   # Login to GitLab container registry
@@ -33,6 +35,15 @@ deploy-client:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker pull $CI_REGISTRY_IMAGE/milvus-client:$CI_COMMIT_SHORT_SHA
 
+    # Ensure the shared Milvus docker network exists on the target host.
+    - |
+      if ! docker network inspect "$MILVUS_DOCKER_NETWORK" >/dev/null 2>&1; then
+        docker network create "$MILVUS_DOCKER_NETWORK"
+      fi
+      if docker ps -a --format '{{.Names}}' | grep -x 'milvus-standalone' >/dev/null 2>&1; then
+        docker network connect "$MILVUS_DOCKER_NETWORK" milvus-standalone >/dev/null 2>&1 || true
+      fi
+
     # Stop and remove previous container
     - docker stop milvus-client || true
     - docker rm milvus-client || true
@@ -41,12 +52,12 @@ deploy-client:
     - |
       docker run -d \
         --restart unless-stopped \
-        --network milvus \
+        --network "$MILVUS_DOCKER_NETWORK" \
         -p 3006:3006 \
         --name milvus-client \
         -e PORT=3006 \
         -e OPENAI_API_KEY=$OPENAI_API_KEY \
-        -e MILVUS_ADDRESS=milvus-standalone:19530 \
+        -e MILVUS_ADDRESS=$MILVUS_ADDRESS \
         -e EMBEDDING_MODEL=text-embedding-3-small \
         -e VECTOR_DIMENSIONS=1536 \
         -e COLLECTION_NAME=rag_documents \
