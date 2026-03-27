@@ -29,6 +29,7 @@ export type DocDeleteItem = Pick<MilvusDoc, 'doc_id'>;
 
 export type VectorQuery = {
   query: string;
+  tenant_id: string;
   topK?: number;
 };
 

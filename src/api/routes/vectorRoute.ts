@@ -50,6 +50,15 @@ router.post(
       .bail()
       .isString()
       .withMessage('query must be a string'),
+    body('tenant_id')
+      .exists()
+      .withMessage('tenant_id (string) is required')
+      .bail()
+      .isString()
+      .withMessage('tenant_id must be a string')
+      .bail()
+      .notEmpty()
+      .withMessage('tenant_id must not be empty'),
     body('topK')
       .optional()
       .isInt({min: 1, max: 100})
@@ -69,6 +78,15 @@ router.post(
       .bail()
       .isString()
       .withMessage('query must be a string'),
+    body('tenant_id')
+      .exists()
+      .withMessage('tenant_id (string) is required')
+      .bail()
+      .isString()
+      .withMessage('tenant_id must be a string')
+      .bail()
+      .notEmpty()
+      .withMessage('tenant_id must not be empty'),
     body('topK')
       .optional()
       .isInt({min: 1, max: 20})

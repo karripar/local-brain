@@ -8,5 +8,5 @@ coverage
 !.env.sample
 volumes
 docs
-
+logs
 

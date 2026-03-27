@@ -93,6 +93,7 @@ Body:
 ```json
 {
   "query": "search phrase",
+  "tenant_id": "default",
   "topK": 5
 }
 ```

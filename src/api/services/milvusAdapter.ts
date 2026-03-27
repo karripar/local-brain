@@ -150,9 +150,12 @@ export const upsertDocs = async (
 // perform a vector search with the given query embedding and return topK results with their doc_id, text, source, and score. Score is the similarity score (higher is more similar).
 export const vectorSearch = async (
   queryEmbedding: number[],
+  tenantId: string,
   topK: number = 5,
   collectionName: string = DEFAULT_COLLECTION_NAME,
 ) => {
+  const escapedTenant = escapeExprString(tenantId.trim());
+  const tenantExpr = `doc_id like "tenant::${escapedTenant}::%"`;
 
   const res = await mlvsClient.search({
     collection_name: collectionName,
@@ -161,6 +164,8 @@ export const vectorSearch = async (
     limit: topK,
     metric_type: 'IP',
     output_fields: ['doc_id', 'text', 'source'],
+    filter: tenantExpr,
+    expr: tenantExpr,
   } as any);
 
   const raw = res.results ?? [];

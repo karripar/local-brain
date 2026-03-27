@@ -95,14 +95,22 @@ export const search = async (
 ) => {
   try {
     const query = req.body?.query;
+    const tenantId = req.body?.tenant_id;
     const topK = Number(req.body?.topK ?? 5);
 
     if (!query || typeof query !== 'string') {
       return res.status(400).json({message: 'query (string) is required'});
     }
+    if (!tenantId || typeof tenantId !== 'string') {
+      return res.status(400).json({message: 'tenant_id (string) is required'});
+    }
 
     const qEmb = await embedQuery(query);
-    const results = await vectorSearch(qEmb, Number.isFinite(topK) ? topK : 5);
+    const results = await vectorSearch(
+      qEmb,
+      tenantId,
+      Number.isFinite(topK) ? topK : 5,
+    );
 
     const context = buildContext(results);
 
@@ -243,14 +251,17 @@ export const askWithRag = async (
 ) => {
   try {
     // topK means how many relevant documents to retrieve from the vector store to build the context for answering the question. Right now defaulted to 5.
-    const {query, topK = 5} = req.body;
+    const {query, tenant_id: tenantId, topK = 5} = req.body;
 
     if (!query || typeof query !== 'string') {
       return res.status(400).json({message: 'query (string) is required'});
     }
+    if (!tenantId || typeof tenantId !== 'string') {
+      return res.status(400).json({message: 'tenant_id (string) is required'});
+    }
 
     const queryEmbedding = await embedQuery(query);
-    const results = await vectorSearch(queryEmbedding, topK);
+    const results = await vectorSearch(queryEmbedding, tenantId, topK);
     const context = buildContext(results);
     const answer = await generateRagAnswer(query, context);
 
