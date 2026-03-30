@@ -147,7 +147,17 @@ const checkSignedSource = (
     console.log('candidatePaths:', candidatePaths);
     console.log('received:', signature);
 
-    return res.status(403).json({ message: 'Invalid signature' });
+    return res.status(403).json({
+      message: 'Invalid signature',
+      validationResult: {
+        reqOriginalUrl: req.originalUrl,
+        rawBody: req.rawBody,
+        secret: secret,
+        timestamp,
+        expected,
+        received: signature,
+      },
+    });
   }
 
   next();
