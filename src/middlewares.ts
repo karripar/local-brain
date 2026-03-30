@@ -84,27 +84,67 @@ const checkSignedSource = (
     return res.status(403).json({ message: 'Stale request' });
   }
 
-  const payload = [
-    req.method.toUpperCase(),
-    req.originalUrl,
-    timestamp,
-    req.rawBody || '',
-  ].join('\n');
+  const normalizeSigningPath = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return '';
+    }
 
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(payload)
-    .digest('hex');
+    if (/^https?:\/\//i.test(trimmed)) {
+      try {
+        const parsed = new URL(trimmed);
+        return `${parsed.pathname}${parsed.search}`;
+      } catch {
+        return '';
+      }
+    }
+
+    return trimmed.startsWith('/') ? trimmed : '';
+  };
+
+  const headerSigningPath = normalizeSigningPath(
+    Array.isArray(req.headers['x-signing-path'])
+      ? String(req.headers['x-signing-path'][0] ?? '')
+      : String(req.headers['x-signing-path'] ?? ''),
+  );
+
+  const candidatePaths = Array.from(
+    new Set([
+      req.originalUrl,
+      req.url,
+      headerSigningPath,
+    ].filter((path) => typeof path === 'string' && path.length > 0)),
+  );
 
   const a = Buffer.from(signature, 'utf8');
-  const b = Buffer.from(expected, 'utf8');
+  let valid = false;
 
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+  for (const candidatePath of candidatePaths) {
+    const candidatePayload = [
+      req.method.toUpperCase(),
+      candidatePath,
+      timestamp,
+      req.rawBody || '',
+    ].join('\n');
+
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(candidatePayload)
+      .digest('hex');
+
+    const b = Buffer.from(expected, 'utf8');
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+      valid = true;
+      break;
+    }
+  }
+
+  if (!valid) {
     console.log('--- SIGNATURE DEBUG ---');
     console.log('req.originalUrl:', req.originalUrl);
     console.log('rawBody:', JSON.stringify(req.rawBody || ''));
     console.log('timestamp:', timestamp);
-    console.log('expected:', expected);
+    console.log('candidatePaths:', candidatePaths);
     console.log('received:', signature);
 
     return res.status(403).json({ message: 'Invalid signature' });
