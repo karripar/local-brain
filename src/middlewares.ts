@@ -154,7 +154,6 @@ const checkSignedSource = (
         rawBody: req.rawBody,
         secret: secret,
         timestamp,
-        expected,
         received: signature,
       },
     });
