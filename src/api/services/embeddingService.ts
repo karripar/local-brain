@@ -1,23 +1,33 @@
-import OpenAI from 'openai';
+import {Ollama} from 'ollama';
 
-export const aiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const embeddingModel = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
+const embeddingModel = process.env.EMBEDDING_MODEL || 'nomic-embed-text'
+export const ollama = new Ollama({
+  host: process.env.OLLAMA_HOST || 'http://localhost:11434',
+});
 
-export const embedTexts = async (texts: string[]) => {
-  if (!texts.length) return [];
+export const embedTexts = async (texts: string) => {
+  if (!texts) return [];
 
-  const resp = await aiClient.embeddings.create({
-    model: embeddingModel,
-    input: texts,
-  });
+    const resp = await ollama.embeddings(
+      {
+        "model": embeddingModel,
+        "prompt": texts,
+      }
+    );
 
-  return resp.data.map((d) => d.embedding as number[]);
-}
+
+  return (resp?.embedding as number[]) ?? [];
+};
 
 export const embedQuery = async (q: string) => {
-  const resp = await aiClient.embeddings.create({
-    model: embeddingModel,
-    input: q,
-  });
-  return (resp.data[0]?.embedding as number[]) ?? [];
-}
+  if (!q) return [];
+
+    const resp = await ollama.embeddings(
+      {
+        "model": embeddingModel,
+        "prompt": q,
+      }
+    );
+
+  return (resp?.embedding as number[]) ?? [];
+};

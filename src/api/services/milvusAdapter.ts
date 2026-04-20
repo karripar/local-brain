@@ -2,8 +2,8 @@ import mlvsClient from '../../client';
 import {DataType} from '@zilliz/milvus2-sdk-node';
 import { MilvusDoc, SearchResult } from '../../types/MilvusTypes';
 
-const DEFAULT_COLLECTION_NAME = process.env.COLLECTION_NAME || 'rag_documents';
-const VECTOR_DIM = Number(process.env.VECTOR_DIMENSIONS) || 1536;
+const DEFAULT_COLLECTION_NAME = process.env.COLLECTION_NAME || 'llama_brains';
+const VECTOR_DIM = Number(process.env.VECTOR_DIMENSIONS) || 768;
 
 export const ensureCollection = async (
   collectionName: string = DEFAULT_COLLECTION_NAME,
@@ -155,7 +155,6 @@ export const vectorSearch = async (
   collectionName: string = DEFAULT_COLLECTION_NAME,
 ) => {
   const escapedTenant = escapeExprString(tenantId.trim());
-  const tenantExpr = `doc_id like "tenant::${escapedTenant}::%"`;
 
   const res = await mlvsClient.search({
     collection_name: collectionName,
@@ -164,8 +163,6 @@ export const vectorSearch = async (
     limit: topK,
     metric_type: 'IP',
     output_fields: ['doc_id', 'text', 'source'],
-    filter: tenantExpr,
-    expr: tenantExpr,
   } as any);
 
   const raw = res.results ?? [];

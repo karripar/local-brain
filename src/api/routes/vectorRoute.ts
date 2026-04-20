@@ -114,7 +114,7 @@ router.delete(
 
 router.delete('/drop', async (req, res, next) => {
   try {
-    await mlvsClient.dropCollection({collection_name: 'rag_documents'});
+    await mlvsClient.dropCollection({collection_name: 'llama_brains'} as any);
     res.json({dropped: true});
   } catch (err) {
     console.error('Error dropping collection:', err);

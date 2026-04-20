@@ -1,7 +1,7 @@
 import app from './app';
 import { ensureCollection } from './api/services/milvusAdapter';
 
-const collectionName = process.env.COLLECTION_NAME || 'rag_documents';
+const collectionName = process.env.COLLECTION_NAME || 'llama_brains';
 const PORT = Number(process.env.PORT) || 3006;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

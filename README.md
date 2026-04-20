@@ -1,12 +1,12 @@
 # Milvus Store
 
-Minimal Express API for storing and searching text embeddings in Milvus.
+Minimal Express API for storing and searching text embeddings in Milvus. This is a personal project for storing useful information and searching them on a local computer.
 
 ## How it works
 
 1. You send text (documents) to the API.
 2. The service creates embeddings for the text.
-3. Embeddings + metadata are stored in a Milvus collection (`rag_documents`).
+3. Embeddings + metadata are stored in a Milvus collection (`llama_brains`).
 4. You can search by semantic similarity, delete docs, or drop the collection.
 
 ## Prerequisites
@@ -133,7 +133,7 @@ Response:
 
 ### DELETE /drop
 
-Dev-only: drop the whole `rag_documents` collection.
+Dev-only: drop the whole `llama_brains` collection.
 
 Response:
 

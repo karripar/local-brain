@@ -7,7 +7,7 @@ import {
   ensureCollection,
 } from '../services/milvusAdapter';
 import mlvsClient from '../../client';
-import {aiClient} from '../services/embeddingService';
+import {ollama} from '../services/embeddingService';
 import {
   IngestItem,
   SearchResult,
@@ -58,7 +58,7 @@ export const ingest = async (
     }
 
     const texts = items.map((i) => i.text);
-    const embeddings = await embedTexts(texts);
+    const embeddings = await Promise.all(texts.map((text) => embedTexts(text)));
 
     console.log('Generated embeddings for items:', embeddings.length);
 
@@ -165,7 +165,7 @@ export const readStore = async (
   try {
 
     const result = await mlvsClient.query({
-      collection_name: process.env.COLLECTION_NAME || 'rag_documents',
+      collection_name: process.env.COLLECTION_NAME || 'llama_brains',
       filter: 'doc_id != ""',
       output_fields: ['doc_id', 'text', 'source'],
       limit: 1000,
@@ -211,28 +211,39 @@ export const buildContext = (results: SearchResult[], maxChunks = 5) => {
  * @param {string} context - The context information retrieved from the vector store to use for answering the question.
  * @returns {Promise<string>} - A promise that resolves to the generated answer from the AI client.
  */
-export const generateRagAnswer = async (question: string, context: string) => {
-  const response = await aiClient.responses.create({
-    model: 'gpt-4.1-mini',
-    input: [
-      {
-        role: 'system',
-        content: [
-          'You are a helpful assistant answering questions based only on the information I give you. Provide CONCISE and accurate answers based on the provided information.',
-          'Never mention "context", "documents", "snippets", "sources", or how you searched for information.',
-          'Write your answer as if you just know the information.',
-          'If the information I gave you is not enough to answer the question, say briefly that you cannot fully answer and clearly state what is missing,',
-          'but still DO NOT mention "context" or "sources";',
-        ].join(' '),
-      },
-      {
-        role: 'user',
-        content: `Here is some information:\n${context}\n\nQuestion: ${question}`,
-      },
-    ],
+export const generateRagAnswer = async (
+  question: string,
+  context: string
+) => {
+  const res = await fetch('http://localhost:11434/api/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: process.env.COMPLETION_MODEL || 'mistral',
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are a helpful assistant answering questions based only on the information I give you.',
+            'Provide concise and accurate answers.',,
+            'Answer as if you already know the information.',
+            'If the information is insufficient, say briefly what is missing.',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: `Here is some information:\n${context}\n\nQuestion: ${question}`,
+        },
+      ],
+      stream: false,
+    }),
   });
 
-  return response.output_text;
+  const data = await res.json();
+
+  return data.message.content;
 };
 
 
