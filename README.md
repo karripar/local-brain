@@ -26,39 +26,42 @@ npm install
 npm run dev
 ```
 
-Default base URL (if not changed): `http://localhost:3006/api/v1/vector`.
+Default base URL (if not changed): `http://localhost:3006/api/v1`.
 
 ## Security
 
 All routes are protected with a shared secret and HMAC protected headers. Paste this script block into Postman's pre-request scripts and set the environment variables and create an environment in Postman:
+
 ```javascript
-const secret = pm.environment.get("SOURCE_SECRET");
+const secret = pm.environment.get('SOURCE_SECRET');
 if (!secret) {
-  throw new Error("Missing SOURCE_SECRET in environment");
+  throw new Error('Missing SOURCE_SECRET in environment');
 }
 
 const timestamp = Date.now().toString();
 const method = pm.request.method.toUpperCase();
 const pathWithQuery = pm.request.url.getPathWithQuery();
 
-let body = "";
-if (pm.request.body && pm.request.body.mode === "raw") {
-  body = pm.request.body.raw || "";
+let body = '';
+if (pm.request.body && pm.request.body.mode === 'raw') {
+  body = pm.request.body.raw || '';
 }
 
-const payload = [method, pathWithQuery, timestamp, body].join("\n");
-const signature = CryptoJS.HmacSHA256(payload, secret).toString(CryptoJS.enc.Hex);
+const payload = [method, pathWithQuery, timestamp, body].join('\n');
+const signature = CryptoJS.HmacSHA256(payload, secret).toString(
+  CryptoJS.enc.Hex,
+);
 
-pm.request.headers.upsert({ key: "x-timestamp", value: timestamp });
-pm.request.headers.upsert({ key: "x-signature", value: signature });
+pm.request.headers.upsert({key: 'x-timestamp', value: timestamp});
+pm.request.headers.upsert({key: 'x-signature', value: signature});
 
-console.log("payload:", payload);
-console.log("signature:", signature);
+console.log('payload:', payload);
+console.log('signature:', signature);
 ```
 
 ## Routes
 
-All routes are under `/api/v1/vector`.
+Vector routes are under `/api/v1/vector`.
 
 ### POST /ingest
 
@@ -140,3 +143,37 @@ Response:
 ```json
 {"dropped": true}
 ```
+
+Upload routes are under `/api/v1/upload`.
+
+### POST /pdf
+
+Upload a PDF file, split it into chunks, embed each chunk, and upsert into Milvus.
+
+Request type: `multipart/form-data`
+
+Fields:
+
+- `file` (required): PDF file
+- `source` (optional): string metadata to store with each chunk (defaults to original filename)
+- `chunkSize` (optional): integer between 50 and 5000 (default: 800)
+- `chunkOverlap` (optional): integer between 0 and 1000 (default: 120)
+
+Response (example shape):
+
+```json
+{
+  "message": "PDF uploaded, chunked, embedded, and stored successfully",
+  "file": {
+    "originalName": "paper.pdf",
+    "storedAs": "1714200000000-uuid-paper.pdf",
+    "path": "uploads/1714200000000-uuid-paper.pdf",
+    "sizeBytes": 349124
+  },
+  "chunks": 17,
+  "upserted": 17,
+  "source": "paper.pdf"
+}
+```
+
+Uploaded files are stored in the project root under `uploads/`.

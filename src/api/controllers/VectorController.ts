@@ -1,4 +1,6 @@
 import {Request, Response, NextFunction} from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 import {embedQuery, embedTexts} from '../services/embeddingService';
 import {
   upsertDocs,
@@ -16,6 +18,45 @@ import {
   VectorQuery,
 } from '../../types/MilvusTypes';
 
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+const UPLOAD_CHUNK_DOC_ID_PATTERN = /^(.*)-chunk-\d+$/;
+
+const getUploadRelativePathForDocId = (docId: string) => {
+  const match = docId.match(UPLOAD_CHUNK_DOC_ID_PATTERN);
+  const fileId = match?.[1];
+
+  if (!fileId) {
+    return undefined;
+  }
+
+  const uploadFileName = `${fileId}.pdf`;
+  const uploadFilePath = path.join(UPLOADS_DIR, uploadFileName);
+
+  if (!fs.existsSync(uploadFilePath)) {
+    return undefined;
+  }
+
+  return `/uploads/${encodeURIComponent(uploadFileName)}`;
+};
+
+const withUploadLink = (result: SearchResult, req: Request): SearchResult => {
+  const uploadRelativePath = getUploadRelativePathForDocId(result.doc_id);
+
+  if (!uploadRelativePath) {
+    return result;
+  }
+
+  const protocol = req.protocol || 'http';
+  const host = req.get('host');
+  const uploadLink = host
+    ? `${protocol}://${host}${uploadRelativePath}`
+    : uploadRelativePath;
+
+  return {
+    ...result,
+    upload_link: uploadLink,
+  };
+};
 
 /**
  *
@@ -29,8 +70,6 @@ import {
  *
  * Each function includes error handling and input validation to ensure robust operation. The module also includes helper functions like `buildContext` to format search results for RAG answer generation.
  */
-
-
 
 /**
  * @function ingest
@@ -79,7 +118,6 @@ export const ingest = async (
   }
 };
 
-
 /**
  * @function search
  * @description Searches the vector store for relevant documents based on a query string. The function generates an embedding for the query, performs a vector search in Milvus, and returns the results along with a built context string. The `topK` parameter determines how many relevant documents to retrieve.
@@ -106,11 +144,12 @@ export const search = async (
     }
 
     const qEmb = await embedQuery(query);
-    const results = await vectorSearch(
+    const rawResults = await vectorSearch(
       qEmb,
       tenantId,
       Number.isFinite(topK) ? topK : 5,
     );
+    const results = rawResults.map((result) => withUploadLink(result, req));
 
     const context = buildContext(results);
 
@@ -119,7 +158,6 @@ export const search = async (
     next(err);
   }
 };
-
 
 /** * @function deleteDocs
  * @description Deletes documents from the vector store based on an array of document IDs. The function expects a body with a `doc_ids` array and deletes the corresponding documents from Milvus. It returns the number of documents deleted.
@@ -163,7 +201,6 @@ export const readStore = async (
   next: NextFunction,
 ) => {
   try {
-
     const result = await mlvsClient.query({
       collection_name: process.env.COLLECTION_NAME || 'llama_brains',
       filter: 'doc_id != ""',
@@ -211,10 +248,7 @@ export const buildContext = (results: SearchResult[], maxChunks = 5) => {
  * @param {string} context - The context information retrieved from the vector store to use for answering the question.
  * @returns {Promise<string>} - A promise that resolves to the generated answer from the AI client.
  */
-export const generateRagAnswer = async (
-  question: string,
-  context: string
-) => {
+export const generateRagAnswer = async (question: string, context: string) => {
   const res = await fetch('http://localhost:11434/api/chat', {
     method: 'POST',
     headers: {
@@ -227,9 +261,11 @@ export const generateRagAnswer = async (
           role: 'system',
           content: [
             'You are a helpful assistant answering questions based only on the information I give you.',
-            'Provide concise and accurate answers.',,
+            'Provide concise and accurate answers.',
+            ,
             'Answer as if you already know the information.',
             'If the information is insufficient, say briefly what is missing.',
+            'Do not say "based on the context/sources" or mention the sources in your answer.',
           ].join(' '),
         },
         {
@@ -245,7 +281,6 @@ export const generateRagAnswer = async (
 
   return data.message.content;
 };
-
 
 /**
  * @function askWithRag
@@ -272,7 +307,8 @@ export const askWithRag = async (
     }
 
     const queryEmbedding = await embedQuery(query);
-    const results = await vectorSearch(queryEmbedding, tenantId, topK);
+    const rawResults = await vectorSearch(queryEmbedding, tenantId, topK);
+    const results = rawResults.map((result) => withUploadLink(result, req));
     const context = buildContext(results);
     const answer = await generateRagAnswer(query, context);
 
@@ -282,6 +318,7 @@ export const askWithRag = async (
         doc_id: r.doc_id,
         source: r.source,
         score: r.score,
+        upload_link: r.upload_link,
       })),
     });
   } catch (err) {

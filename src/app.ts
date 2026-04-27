@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import express from 'express';
+import path from 'node:path';
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -16,11 +17,12 @@ app.use(
     verify: (req: any, _res, buf) => {
       req.rawBody = buf.toString('utf8');
     },
-  })
+  }),
 );
 app.use(morgan('dev'));
 app.use(helmet({contentSecurityPolicy: false}));
 app.use(cors());
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 app.use(errorHandler);
 app.use(checkSignedSource);
@@ -28,12 +30,12 @@ app.use(checkSignedSource);
 app.use('/api/v1', api);
 
 // Health check endpoint to verify Milvus connectivity
-app.get("/milvus/health", async (req, res) => {
+app.get('/milvus/health', async (req, res) => {
   try {
     const result = await mlvsClient.showCollections();
-    res.json({ ok: true, collections: result.data?.map(c => c.name) ?? [] });
+    res.json({ok: true, collections: result.data?.map((c) => c.name) ?? []});
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
+    res.status(500).json({ok: false, error: String(e)});
   }
 });
 
