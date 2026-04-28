@@ -1,5 +1,6 @@
 import app from './app';
-import { ensureCollection } from './api/services/milvusAdapter';
+import {ensureCollection} from './api/services/milvusAdapter';
+import {initializeUploadMetadataStore} from './api/services/postgresStore';
 
 const collectionName = process.env.COLLECTION_NAME || 'llama_brains';
 const PORT = Number(process.env.PORT) || 3006;
@@ -7,7 +8,7 @@ const PORT = Number(process.env.PORT) || 3006;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isMilvusNotReadyError = (err: unknown) => {
-  const e = err as { code?: number; details?: string; message?: string };
+  const e = err as {code?: number; details?: string; message?: string};
   const text = `${e?.details ?? ''} ${e?.message ?? ''}`.toLowerCase();
 
   return e?.code === 14 || text.includes('milvus proxy is not ready yet');
@@ -32,9 +33,7 @@ const initMilvusWithRetry = async () => {
         throw err;
       }
 
-      console.warn(
-        `Milvus is not ready yet. Retrying in ${delayMs} ms...`,
-      );
+      console.warn(`Milvus is not ready yet. Retrying in ${delayMs} ms...`);
       await sleep(delayMs);
     }
   }
@@ -42,6 +41,7 @@ const initMilvusWithRetry = async () => {
 
 (async () => {
   try {
+    await initializeUploadMetadataStore();
     await initMilvusWithRetry();
 
     app.listen(PORT, () => {

@@ -12,6 +12,7 @@ import {
 import {embedTexts} from '../services/embeddingService';
 import {upsertDocs} from '../services/milvusAdapter';
 import {MilvusDoc} from '../../types/MilvusTypes';
+import {recordUploadMetadata, initializeUploadMetadataStore} from '../services/postgresStore';
 
 const MAX_PDF_SIZE_BYTES = 20 * 1024 * 1024;
 
@@ -58,6 +59,8 @@ export const ingestUploadedPdf = async (
   next: NextFunction,
 ) => {
   try {
+    void initializeUploadMetadataStore();
+
     const file = (req as Request & {file?: Express.Multer.File}).file;
     if (!file) {
       return res
@@ -117,6 +120,17 @@ export const ingestUploadedPdf = async (
     await upsertDocs(docs);
 
     const storedPath = path.join('uploads', file.filename).replace(/\\/g, '/');
+
+    await recordUploadMetadata({
+      fileId: path.basename(file.filename, path.extname(file.filename)),
+      originalName: file.originalname,
+      storedName: file.filename,
+      storedPath,
+      source,
+      sizeBytes: file.size,
+      chunkCount: docs.length,
+      docIds: docs.map((doc) => doc.doc_id),
+    });
 
     res.status(201).json({
       message: 'PDF uploaded, chunked, embedded, and stored successfully',

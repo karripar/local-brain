@@ -1,5 +1,6 @@
 import {Request, Response, NextFunction} from 'express';
 import fs from 'node:fs';
+import fsPromises from 'node:fs/promises';
 import path from 'node:path';
 import {embedQuery, embedTexts} from '../services/embeddingService';
 import {
@@ -11,6 +12,10 @@ import {
 import mlvsClient from '../../client';
 import {ollama} from '../services/embeddingService';
 import {
+  markUploadCleanupOutcome,
+  resolveUploadCleanupTargets,
+} from '../services/postgresStore';
+import {
   IngestItem,
   SearchResult,
   MilvusDoc,
@@ -18,19 +23,31 @@ import {
   VectorQuery,
 } from '../../types/MilvusTypes';
 
+type ReadQuery = {
+  page?: string;
+  limit?: string;
+};
+
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 const UPLOAD_CHUNK_DOC_ID_PATTERN = /^(.*)-chunk-\d+$/;
 
-const getUploadRelativePathForDocId = (docId: string) => {
+const getUploadFileIdForDocId = (docId: string) => {
   const match = docId.match(UPLOAD_CHUNK_DOC_ID_PATTERN);
-  const fileId = match?.[1];
+  return match?.[1];
+};
+
+const getUploadFilePathForFileId = (fileId: string) =>
+  path.join(UPLOADS_DIR, `${fileId}.pdf`);
+
+const getUploadRelativePathForDocId = (docId: string) => {
+  const fileId = getUploadFileIdForDocId(docId);
 
   if (!fileId) {
     return undefined;
   }
 
   const uploadFileName = `${fileId}.pdf`;
-  const uploadFilePath = path.join(UPLOADS_DIR, uploadFileName);
+  const uploadFilePath = getUploadFilePathForFileId(fileId);
 
   if (!fs.existsSync(uploadFilePath)) {
     return undefined;
@@ -55,6 +72,87 @@ const withUploadLink = (result: SearchResult, req: Request): SearchResult => {
   return {
     ...result,
     upload_link: uploadLink,
+  };
+};
+
+const removeUploadedFilesForDocIds = async (docIds: string[]) => {
+  const removedFiles: string[] = [];
+  const skippedFiles: string[] = [];
+
+  const postgresResolution = await resolveUploadCleanupTargets(docIds);
+  const trackedTargets = postgresResolution.targets;
+  const trackedFileIds = new Set(trackedTargets.map((target) => target.fileId));
+
+  for (const target of trackedTargets) {
+    try {
+      await fsPromises.unlink(target.storedPath);
+      removedFiles.push(target.storedName);
+      await markUploadCleanupOutcome(target.fileId, 'deleted');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        skippedFiles.push(target.storedName);
+        await markUploadCleanupOutcome(target.fileId, 'deleted');
+        continue;
+      }
+
+      skippedFiles.push(target.storedName);
+      await markUploadCleanupOutcome(
+        target.fileId,
+        'cleanup_failed',
+        error instanceof Error ? error.message : 'Unknown file cleanup error',
+      );
+    }
+  }
+
+  const fallbackFileIds = new Set(
+    docIds
+      .map((docId) => getUploadFileIdForDocId(docId))
+      .filter(Boolean) as string[],
+  );
+
+  for (const fileId of fallbackFileIds) {
+    if (trackedFileIds.has(fileId)) {
+      continue;
+    }
+
+    const remaining = await mlvsClient.query({
+      collection_name: process.env.COLLECTION_NAME || 'llama_brains',
+      filter: `doc_id like "${fileId}-chunk-%"`,
+      output_fields: ['doc_id'],
+      limit: 1,
+    });
+
+    const remainingDocs = Array.isArray(remaining)
+      ? remaining
+      : Array.isArray((remaining as any)?.data)
+        ? (remaining as any).data
+        : Array.isArray((remaining as any)?.results)
+          ? (remaining as any).results
+          : [];
+
+    if (remainingDocs.length > 0) {
+      skippedFiles.push(`${fileId}.pdf`);
+      continue;
+    }
+
+    const uploadFilePath = getUploadFilePathForFileId(fileId);
+
+    try {
+      await fsPromises.unlink(uploadFilePath);
+      removedFiles.push(`${fileId}.pdf`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        skippedFiles.push(`${fileId}.pdf`);
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  return {
+    removedFiles,
+    skippedFiles,
   };
 };
 
@@ -179,8 +277,13 @@ export const deleteDocs = async (
     }
 
     await deleteByDocIds(docIds);
+    const uploadedFiles = await removeUploadedFilesForDocIds(docIds);
 
-    res.json({deleted: docIds.length});
+    res.json({
+      deleted: docIds.length,
+      removedUploads: uploadedFiles.removedFiles,
+      skippedUploads: uploadedFiles.skippedFiles,
+    });
   } catch (err) {
     next(err);
   }
@@ -196,19 +299,56 @@ export const deleteDocs = async (
  * @returns {Promise<void>} - A promise that resolves when the operation is complete.
  */
 export const readStore = async (
-  req: Request,
+  req: Request<{}, {}, {}, ReadQuery>,
   res: Response,
   next: NextFunction,
 ) => {
   try {
+    const requestedPage = Number(req.query?.page ?? 1);
+    const requestedLimit = Number(req.query?.limit ?? 20);
+    const page =
+      Number.isFinite(requestedPage) && requestedPage > 0
+        ? Math.floor(requestedPage)
+        : 1;
+    const limit =
+      Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(Math.floor(requestedLimit), 100)
+        : 20;
+    const stats = await (mlvsClient as any).getCollectionStats({
+      collection_name: process.env.COLLECTION_NAME || 'llama_brains',
+    });
+
+    const total = Number(
+      (stats as any)?.data?.row_count ?? (stats as any)?.row_count ?? 0,
+    );
+    const totalPages = total > 0 ? Math.ceil(total / limit) : 1;
+    const normalizedPage = Math.min(page, totalPages);
     const result = await mlvsClient.query({
       collection_name: process.env.COLLECTION_NAME || 'llama_brains',
       filter: 'doc_id != ""',
       output_fields: ['doc_id', 'text', 'source'],
-      limit: 1000,
+      limit,
+      offset: (normalizedPage - 1) * limit,
     });
 
-    res.json({documents: result});
+    const documents = Array.isArray(result)
+      ? result
+      : Array.isArray((result as any)?.data)
+        ? (result as any).data
+        : Array.isArray((result as any)?.results)
+          ? (result as any).results
+          : [];
+
+    res.json({
+      documents,
+      pagination: {
+        page: normalizedPage,
+        limit,
+        total,
+        totalPages,
+        hasMore: normalizedPage * limit < total,
+      },
+    });
   } catch (err) {
     next(err);
   }

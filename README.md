@@ -13,7 +13,26 @@ Minimal Express API for storing and searching text embeddings in Milvus. This is
 
 - Docker Desktop running
 - Node.js (LTS)
+- PostgreSQL running locally or reachable from this machine
 - `.env` file with your embedding provider config (see `src/services/embeddingService.ts`).
+
+Optional PostgreSQL settings:
+
+```env
+POSTGRES_URL=postgres://postgres:password@localhost:5432/postgres
+# or set the individual fields below
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=password
+POSTGRES_DATABASE=postgres
+```
+
+The backend uses PostgreSQL for upload bookkeeping:
+
+- `upload_files` stores PDF-level metadata and cleanup status.
+- `upload_chunks` maps vector `doc_id` values back to their source PDF.
+- When documents are deleted from Milvus, the backend uses this mapping to remove the matching PDF from `uploads/` when no chunks remain.
 
 ## Run
 
