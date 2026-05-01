@@ -339,8 +339,12 @@ export const readStore = async (
           ? (result as any).results
           : [];
 
+    const documentsWithLinks = documents.map((doc: SearchResult) =>
+      withUploadLink(doc, req),
+    );
+
     res.json({
-      documents,
+      documents: documentsWithLinks,
       pagination: {
         page: normalizedPage,
         limit,
